@@ -3,8 +3,10 @@ name: CI Pipeline
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   build-and-lint:
