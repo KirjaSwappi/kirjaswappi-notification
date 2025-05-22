@@ -30,7 +30,12 @@ jobs:
 
       - name: Install golangci-lint
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $GOPATH/bin v2.1.6
-
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $HOME/go/bin v2.1.6
+        env:
+          GOPATH: $HOME/go
+      
+      - name: Add golangci-lint to PATH
+        run: echo "$HOME/go/bin" >> $GITHUB_PATH
+      
       - name: Run Makefile check target (format + lint)
         run: make check
