@@ -25,7 +25,7 @@ jobs:
 
       - name: Bump version and create tag
         id: tag
-        uses: anothrNick/github-tag-action@v1 # if we use 1 there is a too-be-fixed bug https://github.com/anothrNick/github-tag-action/actions/runs/3139501775/jobs/5099976842#step:1:35 as alternative we could use v1
+        uses: anothrNick/github-tag-action@v1
         env:
             VERBOSE: true
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
