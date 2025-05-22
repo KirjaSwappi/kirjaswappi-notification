@@ -30,5 +30,12 @@ It receives notification data via gRPC calls from other services and broadcasts 
 
 ```bash
 go run ./cmd/server
+```
+
+### To format the code and check linting issues, run
+
+```bash
+make spotless
+```
 
 © 2025 Kirjaswappi. All rights reserved. Unauthorized copying or distribution prohibited.
