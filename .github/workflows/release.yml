@@ -31,6 +31,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_API_TAGGING: false # uses git cli
           TAG_PREFIX: v
+          DEFAULT_BUMP: patch # can be major, minor, or patch
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2.0.0
