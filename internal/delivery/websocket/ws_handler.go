@@ -25,7 +25,11 @@ func NewHandler(b *service.Broadcaster) http.HandlerFunc {
 			log.Println("WebSocket upgrade failed:", err)
 			return
 		}
-		defer conn.Close()
+		defer func() {
+			if err := conn.Close(); err != nil {
+				log.Printf("websocket connection close error: %v", err)
+			}
+		}()
 
 		ch := b.Subscribe(userID)
 		defer b.Unsubscribe(userID, ch)
