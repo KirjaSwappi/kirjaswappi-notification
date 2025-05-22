@@ -27,10 +27,10 @@ jobs:
         id: tag
         uses: anothrNick/github-tag-action@v1
         env:
-            VERBOSE: true
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            GIT_API_TAGGING: false # uses git cli
-            TAG_PREFIX: v
+        VERBOSE: true
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GIT_API_TAGGING: false # uses git cli
+        TAG_PREFIX: v
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2.0.0
