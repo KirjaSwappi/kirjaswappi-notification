@@ -11,6 +11,7 @@ import (
 	"github.com/kirjaswappi/kirjaswappi-notification/internal/service"
 	pb "github.com/kirjaswappi/kirjaswappi-notification/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 // --- gRPC Interceptors ---
@@ -59,6 +60,8 @@ func main() {
 
 		handler := handlergrpc.NewNotificationHandler(broadcaster)
 		pb.RegisterNotificationServiceServer(grpcServer, handler)
+
+		reflection.Register(grpcServer)
 
 		log.Println("gRPC server listening on :50051")
 		if err := grpcServer.Serve(lis); err != nil {
