@@ -102,12 +102,4 @@ go test ./...
 make spotless
 ```
 
-### Code Quality
-- Structured logging with correlation
-- Input validation and sanitization
-- Graceful shutdown handling
-- Connection health monitoring (ping/pong)
-- CORS protection
-- Non-root container execution
-
 © 2025 Kirjaswappi. All rights reserved. Unauthorized copying or distribution prohibited.
