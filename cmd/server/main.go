@@ -187,11 +187,13 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 		duration := time.Since(start)
 
-		s.logger.Info("HTTP request",
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.String("remote_addr", r.RemoteAddr),
-			slog.Duration("duration", duration))
+		if r.URL.Path != "/healthz" {
+			s.logger.Info("HTTP request",
+				slog.String("method", r.Method),
+				slog.String("path", r.URL.Path),
+				slog.String("remote_addr", r.RemoteAddr),
+				slog.Duration("duration", duration))
+		}
 	})
 }
 
