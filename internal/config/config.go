@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -43,7 +44,7 @@ func getEnvAsSlice(key string, defaultValue []string) []string {
 	if value := os.Getenv(key); value != "" {
 		// Simple comma-separated parsing
 		result := []string{}
-		for _, v := range []string{value} {
+		for _, v := range strings.Split(value, ",") {
 			if v != "" {
 				result = append(result, v)
 			}

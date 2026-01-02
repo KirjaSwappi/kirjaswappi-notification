@@ -131,7 +131,7 @@ func (h *Handler) handleConnection(conn *websocket.Conn, userID string) {
 		for {
 			_, _, err := conn.ReadMessage()
 			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 					h.logger.Error("WebSocket read error",
 						slog.String("error", err.Error()),
 						slog.String("user_id", userID))
