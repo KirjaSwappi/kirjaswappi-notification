@@ -11,7 +11,6 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type NotificationHandler struct {
@@ -40,7 +39,7 @@ func (h *NotificationHandler) SendNotification(ctx context.Context, req *pb.Noti
 		UserID:  req.UserId,
 		Title:   req.Title,
 		Message: req.Message,
-		Time:    timestamppb.Now().AsTime(),
+		Time:    req.GetTime().AsTime(),
 	}
 
 	h.broadcaster.Broadcast(notification)
