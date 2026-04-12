@@ -2,11 +2,13 @@ package websocket
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/kirjaswappi/kirjaswappi-notification/internal/service"
 )
@@ -15,14 +17,18 @@ type Handler struct {
 	broadcaster    *service.Broadcaster
 	logger         *slog.Logger
 	allowedOrigins []string
+	apiKey         string
+	jwtSecret      []byte
 	upgrader       websocket.Upgrader
 }
 
-func NewHandler(b *service.Broadcaster, logger *slog.Logger, allowedOrigins []string) *Handler {
+func NewHandler(b *service.Broadcaster, logger *slog.Logger, allowedOrigins []string, apiKey string, jwtSecret string) *Handler {
 	h := &Handler{
 		broadcaster:    b,
 		logger:         logger,
 		allowedOrigins: allowedOrigins,
+		apiKey:         apiKey,
+		jwtSecret:      []byte(jwtSecret),
 	}
 
 	h.upgrader = websocket.Upgrader{
@@ -55,17 +61,79 @@ func (h *Handler) checkOrigin(r *http.Request) bool {
 	return false
 }
 
+// validateJWT parses and validates a JWT token, returning the userId from the sub claim
+func (h *Handler) validateJWT(tokenString string) (string, error) {
+	if len(h.jwtSecret) == 0 {
+		return "", fmt.Errorf("JWT secret not configured")
+	}
+
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return h.jwtSecret, nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("invalid token: %w", err)
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok || !token.Valid {
+		return "", fmt.Errorf("invalid token claims")
+	}
+
+	sub, err := claims.GetSubject()
+	if err != nil || sub == "" {
+		return "", fmt.Errorf("missing sub claim")
+	}
+
+	return sub, nil
+}
+
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("userId")
+	token := r.URL.Query().Get("token")
+	queryUserID := r.URL.Query().Get("userId")
+
+	var userID string
+
+	// Try JWT validation first
+	if token != "" && len(h.jwtSecret) > 0 {
+		jwtUserID, err := h.validateJWT(token)
+		if err == nil {
+			// JWT is valid — use userId from token claims (ignore query param)
+			userID = jwtUserID
+		} else if h.apiKey != "" && token == h.apiKey {
+			// Fall back to API key auth — trust query param userId
+			userID = queryUserID
+		} else {
+			h.logger.Warn("WebSocket connection rejected: invalid token",
+				slog.String("remote_addr", r.RemoteAddr))
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+	} else if h.apiKey != "" {
+		// No JWT secret configured, use API key only
+		if token != h.apiKey {
+			h.logger.Warn("WebSocket connection rejected: invalid API key",
+				slog.String("remote_addr", r.RemoteAddr))
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		userID = queryUserID
+	} else {
+		// No auth configured — use query param (development mode)
+		userID = queryUserID
+	}
+
 	if userID == "" {
 		h.logger.Warn("WebSocket connection missing userId",
 			slog.String("remote_addr", r.RemoteAddr))
-		http.Error(w, "userId query param required", http.StatusBadRequest)
+		http.Error(w, "userId required", http.StatusBadRequest)
 		return
 	}
 
 	// Basic userID validation
-	if len(userID) == 0 || len(userID) > 100 || strings.ContainsAny(userID, "\n\r\t") {
+	if len(userID) > 100 || strings.ContainsAny(userID, "\n\r\t") {
 		h.logger.Warn("WebSocket connection invalid userId",
 			slog.String("user_id", userID),
 			slog.String("remote_addr", r.RemoteAddr))

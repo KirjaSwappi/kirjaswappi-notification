@@ -34,7 +34,7 @@ func (b *Broadcaster) Subscribe(userID string) Subscriber {
 		return ch
 	}
 
-	ch := make(Subscriber, 10)
+	ch := make(Subscriber, 50)
 	b.subscribers[userID] = append(b.subscribers[userID], ch)
 
 	b.logger.Debug("User subscribed",
@@ -101,6 +101,12 @@ func (b *Broadcaster) Broadcast(n domain.Notification) {
 		slog.String("title", n.Title),
 		slog.Int("delivered", delivered),
 		slog.Int("dropped", dropped))
+
+	if dropped > 0 {
+		b.logger.Warn("Notifications dropped due to full channel",
+			slog.String("user_id", n.UserID),
+			slog.Int("dropped", dropped))
+	}
 }
 
 func (b *Broadcaster) Close() {

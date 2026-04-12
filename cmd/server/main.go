@@ -18,7 +18,10 @@ import (
 	"github.com/kirjaswappi/kirjaswappi-notification/internal/service"
 	pb "github.com/kirjaswappi/kirjaswappi-notification/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 )
 
 type Server struct {
@@ -80,9 +83,19 @@ func (s *Server) startGRPCServer() error {
 		return fmt.Errorf("failed to listen on port %d: %w", s.config.GRPCPort, err)
 	}
 
+	interceptors := []grpc.UnaryServerInterceptor{s.unaryLoggingInterceptor}
+	streamInterceptors := []grpc.StreamServerInterceptor{s.streamLoggingInterceptor}
+
+	if s.config.APIKey != "" {
+		interceptors = append([]grpc.UnaryServerInterceptor{s.unaryAPIKeyInterceptor}, interceptors...)
+		streamInterceptors = append([]grpc.StreamServerInterceptor{s.streamAPIKeyInterceptor}, streamInterceptors...)
+	} else {
+		s.logger.Warn("API_KEY not set — gRPC server is running without authentication")
+	}
+
 	s.grpcServer = grpc.NewServer(
-		grpc.UnaryInterceptor(s.unaryLoggingInterceptor),
-		grpc.StreamInterceptor(s.streamLoggingInterceptor),
+		grpc.ChainUnaryInterceptor(interceptors...),
+		grpc.ChainStreamInterceptor(streamInterceptors...),
 	)
 
 	handler := handlergrpc.NewNotificationHandler(s.broadcaster, s.logger)
@@ -103,14 +116,14 @@ func (s *Server) startHTTPServer() error {
 	mux := http.NewServeMux()
 
 	// WebSocket handler
-	wsHandler := ws.NewHandler(s.broadcaster, s.logger, s.config.AllowedOrigins)
+	wsHandler := ws.NewHandler(s.broadcaster, s.logger, s.config.AllowedOrigins, s.config.APIKey, s.config.JWTSecret)
 	mux.Handle("/ws", s.loggingMiddleware(wsHandler))
 
 	// Health check
 	mux.Handle("/healthz", s.loggingMiddleware(http.HandlerFunc(s.healthCheck)))
 
-	// Stats endpoint (for monitoring)
-	mux.Handle("/stats", s.loggingMiddleware(http.HandlerFunc(s.statsHandler)))
+	// Stats endpoint (for monitoring, requires API key)
+	mux.Handle("/stats", s.loggingMiddleware(s.requireAPIKey(http.HandlerFunc(s.statsHandler))))
 
 	s.httpServer = &http.Server{
 		Addr:         fmt.Sprintf(":%d", s.config.HTTPPort),
@@ -181,6 +194,22 @@ func (s *Server) shutdown(ctx context.Context) {
 }
 
 // Middleware
+func (s *Server) requireAPIKey(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.config.APIKey != "" {
+			key := r.URL.Query().Get("token")
+			if key == "" {
+				key = r.Header.Get("X-API-Key")
+			}
+			if key != s.config.APIKey {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -198,6 +227,45 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 }
 
 // gRPC Interceptors
+
+func (s *Server) unaryAPIKeyInterceptor(
+	ctx context.Context,
+	req interface{},
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (interface{}, error) {
+	if err := s.validateAPIKey(ctx); err != nil {
+		return nil, err
+	}
+	return handler(ctx, req)
+}
+
+func (s *Server) streamAPIKeyInterceptor(
+	srv interface{},
+	ss grpc.ServerStream,
+	info *grpc.StreamServerInfo,
+	handler grpc.StreamHandler,
+) error {
+	if err := s.validateAPIKey(ss.Context()); err != nil {
+		return err
+	}
+	return handler(srv, ss)
+}
+
+func (s *Server) validateAPIKey(ctx context.Context) error {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return status.Error(codes.Unauthenticated, "missing metadata")
+	}
+
+	keys := md.Get("x-api-key")
+	if len(keys) == 0 || keys[0] != s.config.APIKey {
+		return status.Error(codes.Unauthenticated, "invalid API key")
+	}
+
+	return nil
+}
+
 func (s *Server) unaryLoggingInterceptor(
 	ctx context.Context,
 	req interface{},
