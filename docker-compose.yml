@@ -10,6 +10,8 @@ services:
       - LOG_LEVEL=debug
       - ALLOWED_ORIGINS=*
       - SHUTDOWN_TIMEOUT=10
+      - API_KEY=${API_KEY:-}
+      - JWT_SECRET=${JWT_SECRET:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/healthz"]
