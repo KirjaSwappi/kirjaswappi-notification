@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -90,39 +91,43 @@ func (h *Handler) validateJWT(tokenString string) (string, error) {
 	return sub, nil
 }
 
+func (h *Handler) authEnabled() bool {
+	return len(h.jwtSecret) > 0 || h.apiKey != ""
+}
+
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	queryUserID := r.URL.Query().Get("userId")
 
 	var userID string
 
-	// Try JWT validation first
-	if token != "" && len(h.jwtSecret) > 0 {
+	if !h.authEnabled() {
+		// No auth configured — use query param (development mode)
+		userID = queryUserID
+	} else if token == "" {
+		// Auth is configured but no token provided
+		h.logger.Warn("WebSocket connection rejected: missing token",
+			slog.String("remote_addr", r.RemoteAddr))
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	} else if h.apiKey != "" && subtle.ConstantTimeCompare([]byte(token), []byte(h.apiKey)) == 1 {
+		// API key match — trust query param userId
+		userID = queryUserID
+	} else if len(h.jwtSecret) > 0 {
+		// Try JWT validation
 		jwtUserID, err := h.validateJWT(token)
-		if err == nil {
-			// JWT is valid — use userId from token claims (ignore query param)
-			userID = jwtUserID
-		} else if h.apiKey != "" && token == h.apiKey {
-			// Fall back to API key auth — trust query param userId
-			userID = queryUserID
-		} else {
+		if err != nil {
 			h.logger.Warn("WebSocket connection rejected: invalid token",
 				slog.String("remote_addr", r.RemoteAddr))
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-	} else if h.apiKey != "" {
-		// No JWT secret configured, use API key only
-		if token != h.apiKey {
-			h.logger.Warn("WebSocket connection rejected: invalid API key",
-				slog.String("remote_addr", r.RemoteAddr))
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		userID = queryUserID
+		userID = jwtUserID
 	} else {
-		// No auth configured — use query param (development mode)
-		userID = queryUserID
+		h.logger.Warn("WebSocket connection rejected: invalid API key",
+			slog.String("remote_addr", r.RemoteAddr))
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
 	}
 
 	if userID == "" {

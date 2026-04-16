@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"log/slog"
 	"net"
@@ -197,11 +198,8 @@ func (s *Server) shutdown(ctx context.Context) {
 func (s *Server) requireAPIKey(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.config.APIKey != "" {
-			key := r.URL.Query().Get("token")
-			if key == "" {
-				key = r.Header.Get("X-API-Key")
-			}
-			if key != s.config.APIKey {
+			key := r.Header.Get("X-API-Key")
+			if subtle.ConstantTimeCompare([]byte(key), []byte(s.config.APIKey)) != 1 {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -259,7 +257,7 @@ func (s *Server) validateAPIKey(ctx context.Context) error {
 	}
 
 	keys := md.Get("x-api-key")
-	if len(keys) == 0 || keys[0] != s.config.APIKey {
+	if len(keys) == 0 || subtle.ConstantTimeCompare([]byte(keys[0]), []byte(s.config.APIKey)) != 1 {
 		return status.Error(codes.Unauthenticated, "invalid API key")
 	}
 
