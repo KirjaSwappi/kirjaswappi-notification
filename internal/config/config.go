@@ -12,6 +12,8 @@ type Config struct {
 	LogLevel        string
 	AllowedOrigins  []string
 	ShutdownTimeout int // seconds
+	APIKey          string
+	JWTSecret       string
 }
 
 func Load() *Config {
@@ -21,6 +23,8 @@ func Load() *Config {
 		LogLevel:        getEnv("LOG_LEVEL", "info"),
 		AllowedOrigins:  getEnvAsSlice("ALLOWED_ORIGINS", []string{"*"}),
 		ShutdownTimeout: getEnvAsInt("SHUTDOWN_TIMEOUT", 30),
+		APIKey:          getEnv("API_KEY", ""),
+		JWTSecret:       getEnv("JWT_SECRET", ""),
 	}
 }
 
@@ -42,11 +46,11 @@ func getEnvAsInt(key string, defaultValue int) int {
 
 func getEnvAsSlice(key string, defaultValue []string) []string {
 	if value := os.Getenv(key); value != "" {
-		// Simple comma-separated parsing
 		result := []string{}
 		for _, v := range strings.Split(value, ",") {
-			if v != "" {
-				result = append(result, v)
+			trimmed := strings.TrimSpace(v)
+			if trimmed != "" {
+				result = append(result, trimmed)
 			}
 		}
 		if len(result) > 0 {

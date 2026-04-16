@@ -3,6 +3,8 @@ package service
 import (
 	"log/slog"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/kirjaswappi/kirjaswappi-notification/internal/domain"
 )
@@ -10,10 +12,11 @@ import (
 type Subscriber chan domain.Notification
 
 type Broadcaster struct {
-	subscribers map[string][]Subscriber // userID -> channels
-	lock        sync.RWMutex
-	logger      *slog.Logger
-	closed      bool
+	subscribers  map[string][]Subscriber // userID -> channels
+	lock         sync.RWMutex
+	logger       *slog.Logger
+	closed       bool
+	lastDropWarn atomic.Int64 // unix timestamp of last drop warning
 }
 
 func NewBroadcaster(logger *slog.Logger) *Broadcaster {
@@ -34,7 +37,7 @@ func (b *Broadcaster) Subscribe(userID string) Subscriber {
 		return ch
 	}
 
-	ch := make(Subscriber, 10)
+	ch := make(Subscriber, 50)
 	b.subscribers[userID] = append(b.subscribers[userID], ch)
 
 	b.logger.Debug("User subscribed",
@@ -101,6 +104,16 @@ func (b *Broadcaster) Broadcast(n domain.Notification) {
 		slog.String("title", n.Title),
 		slog.Int("delivered", delivered),
 		slog.Int("dropped", dropped))
+
+	if dropped > 0 {
+		now := time.Now().Unix()
+		last := b.lastDropWarn.Load()
+		if now-last >= 60 && b.lastDropWarn.CompareAndSwap(last, now) {
+			b.logger.Warn("Notifications dropped due to full channel",
+				slog.String("user_id", n.UserID),
+				slog.Int("dropped", dropped))
+		}
+	}
 }
 
 func (b *Broadcaster) Close() {
