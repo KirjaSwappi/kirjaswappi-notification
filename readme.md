@@ -7,7 +7,7 @@ It receives notification data via gRPC calls from other services and broadcasts 
 
 - gRPC server to receive notifications from other microservices
 - WebSocket server for real-time notifications to frontend clients
-- JWT and API key authentication for WebSocket and gRPC
+- JWT and API key authentication for WebSocket; API key authentication for gRPC
 - Supports multiple subscribers per user
 - Production-ready with structured logging, graceful shutdown, and health checks
 - Configurable via environment variables
@@ -37,7 +37,7 @@ Configure the service using environment variables:
 | `API_KEY` | *(empty)* | API key for gRPC, `/stats`, and WebSocket authentication |
 | `JWT_SECRET` | *(empty)* | Secret for verifying JWT tokens on WebSocket connections |
 
-> **Note:** If neither `API_KEY` nor `JWT_SECRET` is set, authentication is disabled (development mode). In production, set at least one.
+> **Note:** If neither `API_KEY` nor `JWT_SECRET` is set, authentication is disabled (development mode). Setting only `JWT_SECRET` enables JWT verification for WebSocket connections, but leaves gRPC and `/stats` unauthenticated. In production, set `API_KEY` to protect gRPC and `/stats`; set `JWT_SECRET` as well if you want JWT-based authentication on WebSocket connections.
 
 ## Getting Started
 
@@ -77,22 +77,22 @@ docker run -p 8080:8080 -p 50051:50051 \
 
 ### WebSocket
 
-- `GET /ws?token={token}&userId={userId}` - Real-time notifications
+- `GET /ws?token={token}[&userId={userId}]` - Real-time notifications (`userId` is required in development and API-key modes; ignored for JWT)
 
 **Authentication (checked in order):**
 
-1. **No auth configured** — `userId` query param used directly (development mode)
-2. **API key** — pass `API_KEY` as `token`; `userId` query param is trusted
-3. **JWT** — pass a JWT as `token`; user ID is extracted from the `sub` claim
+1. **No auth configured** — `userId` query param is required and used directly (development mode)
+2. **API key** — pass `API_KEY` as `token`; `userId` query param is required and trusted
+3. **JWT** — pass a JWT as `token`; user ID is derived from the `sub` claim, `userId` query param is ignored
 
 ### HTTP
 
 - `GET /healthz` - Health check with connection stats (public)
-- `GET /stats` - Connection statistics (requires `X-API-Key` header)
+- `GET /stats` - Connection statistics (requires `X-API-Key` header when `API_KEY` is set)
 
 ### gRPC
 
-- `SendNotification` - Send notification to a user (requires `x-api-key` metadata)
+- `SendNotification` - Send notification to a user (requires `x-api-key` metadata when `API_KEY` is set)
 
 ## WebSocket Usage
 
@@ -101,13 +101,21 @@ docker run -p 8080:8080 -p 50051:50051 \
 const token = 'eyJhbGciOiJIUzI1NiIs...';
 const ws = new WebSocket(`wss://ans.kirjaswappi.fi/ws?token=${token}`);
 
-// With API key (server-to-server)
-const ws = new WebSocket(`wss://ans.kirjaswappi.fi/ws?token=${apiKey}&userId=123`);
-
 ws.onmessage = function(event) {
     const notification = JSON.parse(event.data);
     console.log('Notification:', notification);
     // { UserID: "123", Title: "New Message", Message: "...", Time: "..." }
+};
+```
+
+```javascript
+// With API key (server-to-server)
+const apiKey = process.env.NOTIFICATION_API_KEY;
+const wsApiKey = new WebSocket(`wss://ans.kirjaswappi.fi/ws?token=${apiKey}&userId=123`);
+
+wsApiKey.onmessage = function(event) {
+    const notification = JSON.parse(event.data);
+    console.log('Notification:', notification);
 };
 ```
 
