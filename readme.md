@@ -7,6 +7,7 @@ It receives notification data via gRPC calls from other services and broadcasts 
 
 - gRPC server to receive notifications from other microservices
 - WebSocket server for real-time notifications to frontend clients
+- JWT and API key authentication for WebSocket and gRPC
 - Supports multiple subscribers per user
 - Production-ready with structured logging, graceful shutdown, and health checks
 - Configurable via environment variables
@@ -33,6 +34,10 @@ Configure the service using environment variables:
 | `LOG_LEVEL` | info | Log level (debug, info, warn, error) |
 | `ALLOWED_ORIGINS` | * | Comma-separated list of allowed WebSocket origins |
 | `SHUTDOWN_TIMEOUT` | 30 | Graceful shutdown timeout in seconds |
+| `API_KEY` | *(empty)* | API key for gRPC, `/stats`, and WebSocket authentication |
+| `JWT_SECRET` | *(empty)* | Secret for verifying JWT tokens on WebSocket connections |
+
+> **Note:** If neither `API_KEY` nor `JWT_SECRET` is set, authentication is disabled (development mode). In production, set at least one.
 
 ## Getting Started
 
@@ -63,25 +68,41 @@ docker build -t kirjaswappi-notification .
 docker run -p 8080:8080 -p 50051:50051 \
   -e LOG_LEVEL=info \
   -e ALLOWED_ORIGINS="https://kirjaswappi.fi,https://app.kirjaswappi.fi" \
+  -e API_KEY="your-api-key" \
+  -e JWT_SECRET="your-jwt-secret" \
   kirjaswappi-notification
 ```
 
 ## API Endpoints
 
 ### WebSocket
-- `GET /ws?userId={userId}` - WebSocket connection for real-time notifications
+
+- `GET /ws?token={token}&userId={userId}` - Real-time notifications
+
+**Authentication (checked in order):**
+
+1. **No auth configured** — `userId` query param used directly (development mode)
+2. **API key** — pass `API_KEY` as `token`; `userId` query param is trusted
+3. **JWT** — pass a JWT as `token`; user ID is extracted from the `sub` claim
 
 ### HTTP
-- `GET /healthz` - Health check with connection stats
-- `GET /stats` - Connection statistics
+
+- `GET /healthz` - Health check with connection stats (public)
+- `GET /stats` - Connection statistics (requires `X-API-Key` header)
 
 ### gRPC
-- `SendNotification` - Send notification to user
+
+- `SendNotification` - Send notification to a user (requires `x-api-key` metadata)
 
 ## WebSocket Usage
 
 ```javascript
-const ws = new WebSocket('wss://notify.kirjaswappi.fi/ws?userId=123');
+// With JWT token
+const token = 'eyJhbGciOiJIUzI1NiIs...';
+const ws = new WebSocket(`wss://ans.kirjaswappi.fi/ws?token=${token}`);
+
+// With API key (server-to-server)
+const ws = new WebSocket(`wss://ans.kirjaswappi.fi/ws?token=${apiKey}&userId=123`);
 
 ws.onmessage = function(event) {
     const notification = JSON.parse(event.data);
