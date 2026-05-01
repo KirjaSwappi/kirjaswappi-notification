@@ -12,12 +12,14 @@ import (
 	"syscall"
 	"time"
 
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/kirjaswappi/kirjaswappi-notification/internal/config"
 	handlergrpc "github.com/kirjaswappi/kirjaswappi-notification/internal/delivery/grpc"
 	ws "github.com/kirjaswappi/kirjaswappi-notification/internal/delivery/websocket"
 	"github.com/kirjaswappi/kirjaswappi-notification/internal/logger"
 	"github.com/kirjaswappi/kirjaswappi-notification/internal/service"
 	pb "github.com/kirjaswappi/kirjaswappi-notification/proto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -91,20 +93,27 @@ func (s *Server) startGRPCServer() error {
 		return fmt.Errorf("failed to listen on port %d: %w", s.config.GRPCPort, err)
 	}
 
-	interceptors := []grpc.UnaryServerInterceptor{s.unaryLoggingInterceptor}
-	streamInterceptors := []grpc.StreamServerInterceptor{s.streamLoggingInterceptor}
+	grpc_prometheus.EnableHandlingTimeHistogram()
+
+	unaryInterceptors := []grpc.UnaryServerInterceptor{grpc_prometheus.UnaryServerInterceptor}
+	streamInterceptors := []grpc.StreamServerInterceptor{grpc_prometheus.StreamServerInterceptor}
 
 	if s.config.APIKey != "" {
-		interceptors = append([]grpc.UnaryServerInterceptor{s.unaryAPIKeyInterceptor}, interceptors...)
-		streamInterceptors = append([]grpc.StreamServerInterceptor{s.streamAPIKeyInterceptor}, streamInterceptors...)
+		unaryInterceptors = append(unaryInterceptors, s.unaryAPIKeyInterceptor)
+		streamInterceptors = append(streamInterceptors, s.streamAPIKeyInterceptor)
 	} else {
 		s.logger.Warn("API_KEY not set — gRPC server is running without authentication")
 	}
 
+	unaryInterceptors = append(unaryInterceptors, s.unaryLoggingInterceptor)
+	streamInterceptors = append(streamInterceptors, s.streamLoggingInterceptor)
+
 	s.grpcServer = grpc.NewServer(
-		grpc.ChainUnaryInterceptor(interceptors...),
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
 		grpc.ChainStreamInterceptor(streamInterceptors...),
 	)
+
+	grpc_prometheus.Register(s.grpcServer)
 
 	handler := handlergrpc.NewNotificationHandler(s.broadcaster, s.logger)
 	pb.RegisterNotificationServiceServer(s.grpcServer, handler)
@@ -134,6 +143,8 @@ func (s *Server) startHTTPServer() error {
 
 	// Health check
 	mux.Handle("/healthz", s.loggingMiddleware(http.HandlerFunc(s.healthCheck)))
+
+	mux.Handle("/metrics", promhttp.Handler())
 
 	// Stats endpoint (for monitoring, requires API key)
 	mux.Handle("/stats", s.loggingMiddleware(s.requireAPIKey(http.HandlerFunc(s.statsHandler))))
@@ -226,7 +237,7 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 		duration := time.Since(start)
 
-		if r.URL.Path != "/healthz" {
+		if r.URL.Path != "/healthz" && r.URL.Path != "/metrics" {
 			s.logger.Info("HTTP request",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),

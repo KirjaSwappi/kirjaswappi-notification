@@ -64,3 +64,77 @@ func TestGetEnvAsSlice(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_StrictRequiresOrigins(t *testing.T) {
+	t.Setenv("NOTIFY_STRICT", "true")
+	t.Setenv("ALLOWED_ORIGINS", "")
+	t.Setenv("API_KEY", "k")
+	t.Setenv("JWT_SECRET", "s")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error when ALLOWED_ORIGINS empty in strict mode")
+	}
+}
+
+func TestLoad_StrictRejectsWildcardOrigin(t *testing.T) {
+	t.Setenv("NOTIFY_STRICT", "yes")
+	t.Setenv("ALLOWED_ORIGINS", "*")
+	t.Setenv("API_KEY", "k")
+	t.Setenv("JWT_SECRET", "s")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error for wildcard ALLOWED_ORIGINS in strict mode")
+	}
+}
+
+func TestLoad_StrictRequiresAPIKey(t *testing.T) {
+	t.Setenv("NOTIFY_STRICT", "1")
+	t.Setenv("ALLOWED_ORIGINS", "https://example.com")
+	t.Setenv("API_KEY", "")
+	t.Setenv("JWT_SECRET", "s")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error when API_KEY empty in strict mode")
+	}
+}
+
+func TestLoad_StrictRequiresJWTSecret(t *testing.T) {
+	t.Setenv("NOTIFY_STRICT", "on")
+	t.Setenv("ALLOWED_ORIGINS", "https://example.com")
+	t.Setenv("API_KEY", "k")
+	t.Setenv("JWT_SECRET", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error when JWT_SECRET empty in strict mode")
+	}
+}
+
+func TestLoad_NonStrictDefaultOrigins(t *testing.T) {
+	t.Setenv("NOTIFY_STRICT", "false")
+	t.Setenv("ALLOWED_ORIGINS", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := []string{"http://localhost:5173"}
+	if !reflect.DeepEqual(cfg.AllowedOrigins, want) {
+		t.Fatalf("AllowedOrigins=%v want %v", cfg.AllowedOrigins, want)
+	}
+}
+
+func TestLoad_EnableGRPCReflectionParsing(t *testing.T) {
+	t.Setenv("NOTIFY_STRICT", "false")
+	t.Setenv("ALLOWED_ORIGINS", "")
+	t.Setenv("ENABLE_GRPC_REFLECTION", "no")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.EnableGRPCReflection {
+		t.Fatal("expected EnableGRPCReflection=false")
+	}
+	t.Setenv("ENABLE_GRPC_REFLECTION", "true")
+	cfg2, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg2.EnableGRPCReflection {
+		t.Fatal("expected EnableGRPCReflection=true")
+	}
+}

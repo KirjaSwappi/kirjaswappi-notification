@@ -8,21 +8,21 @@ import (
 )
 
 type Config struct {
-	HTTPPort              int
-	GRPCPort              int
-	LogLevel              string
-	AllowedOrigins        []string
-	ShutdownTimeout       int // seconds
-	APIKey                string
-	JWTSecret             string
-	EnableGRPCReflection  bool
+	HTTPPort             int
+	GRPCPort             int
+	LogLevel             string
+	AllowedOrigins       []string
+	ShutdownTimeout      int // seconds
+	APIKey               string
+	JWTSecret            string
+	EnableGRPCReflection bool
 }
 
 // Load reads configuration from the environment. Returns an error if the
 // process is asked to run in a strict (production) configuration but is
-// missing required variables. Strict mode is opted in via NOTIFY_STRICT=true.
+// missing required variables. Strict mode is opted in via NOTIFY_STRICT (boolean env).
 func Load() (*Config, error) {
-	strict := getEnv("NOTIFY_STRICT", "") == "true"
+	strict := getEnvAsBool("NOTIFY_STRICT", false)
 
 	rawOrigins := os.Getenv("ALLOWED_ORIGINS")
 	allowed := parseCSV(rawOrigins)
