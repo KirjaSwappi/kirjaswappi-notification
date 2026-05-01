@@ -34,8 +34,15 @@ type Server struct {
 }
 
 func main() {
-	// Load configuration
-	cfg := config.Load()
+	// Load configuration. In strict (production) mode this fails fast on
+	// misconfiguration (missing API_KEY, missing/wildcard ALLOWED_ORIGINS,
+	// missing JWT_SECRET) so we never silently ship an unauthenticated build.
+	cfg, err := config.Load()
+	if err != nil {
+		// stderr because logger may not be initialised yet.
+		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+		os.Exit(78) // EX_CONFIG
+	}
 
 	// Setup logger
 	log := logger.New(cfg.LogLevel)
@@ -101,7 +108,12 @@ func (s *Server) startGRPCServer() error {
 
 	handler := handlergrpc.NewNotificationHandler(s.broadcaster, s.logger)
 	pb.RegisterNotificationServiceServer(s.grpcServer, handler)
-	reflection.Register(s.grpcServer)
+	if s.config.EnableGRPCReflection {
+		// Reflection helps tooling (grpcurl, evans) discover services.
+		// Disabled by default because it widens the attack surface in prod.
+		reflection.Register(s.grpcServer)
+		s.logger.Info("gRPC reflection enabled")
+	}
 
 	go func() {
 		s.logger.Info("gRPC server started", slog.Int("port", s.config.GRPCPort))
