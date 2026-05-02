@@ -41,3 +41,6 @@ jobs:
       
       - name: Run Makefile check target (format + lint)
         run: make check
+
+      - name: Run unit tests with race detector
+        run: go test -race -count=1 ./...
