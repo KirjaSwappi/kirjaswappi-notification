@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -150,16 +151,21 @@ func (s *Server) startHTTPServer() error {
 	mux.Handle("/stats", s.loggingMiddleware(s.requireAPIKey(http.HandlerFunc(s.statsHandler))))
 
 	s.httpServer = &http.Server{
-		Addr:         fmt.Sprintf(":%d", s.config.HTTPPort),
 		Handler:      mux,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
 
+	addr := fmt.Sprintf(":%d", s.config.HTTPPort)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("failed to listen on HTTP port %d: %w", s.config.HTTPPort, err)
+	}
+
+	s.logger.Info("HTTP server started", slog.Int("port", s.config.HTTPPort))
 	go func() {
-		s.logger.Info("HTTP server started", slog.Int("port", s.config.HTTPPort))
-		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := s.httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			s.logger.Error("HTTP server failed", slog.String("error", err.Error()))
 		}
 	}()
