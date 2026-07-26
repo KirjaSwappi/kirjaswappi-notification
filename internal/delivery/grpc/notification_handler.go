@@ -45,13 +45,15 @@ func (h *NotificationHandler) SendNotification(ctx context.Context, req *pb.Noti
 	delivered := h.broadcaster.Broadcast(notification)
 	if delivered == 0 {
 		h.logger.Warn("notification delivered to zero subscribers",
-			slog.String("userId", req.UserId),
+			slog.String("user_id", req.UserId),
 			slog.String("title", req.Title))
+		return &pb.NotificationResponse{Success: false}, nil
 	}
 
 	h.logger.Info("Notification sent",
 		slog.String("user_id", req.UserId),
-		slog.String("title", req.Title))
+		slog.String("title", req.Title),
+		slog.Int("delivered", delivered))
 
 	return &pb.NotificationResponse{Success: delivered > 0}, nil
 }
