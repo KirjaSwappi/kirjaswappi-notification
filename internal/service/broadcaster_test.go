@@ -102,3 +102,32 @@ func TestBroadcasterMultipleSubscribers(t *testing.T) {
 		t.Errorf("Expected 2 subscribers, got %d", subs)
 	}
 }
+
+func TestBroadcastReturnsZeroWithNoSubscribers(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	b := NewBroadcaster(logger)
+	defer b.Close()
+
+	n := domain.Notification{UserID: "user-1", Title: "Test", Message: "msg", Time: time.Now()}
+	delivered := b.Broadcast(n)
+	if delivered != 0 {
+		t.Errorf("Expected 0 delivered with no subscribers, got %d", delivered)
+	}
+}
+
+func TestBroadcastReturnsDeliveredCount(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	b := NewBroadcaster(logger)
+	defer b.Close()
+
+	ch1 := b.Subscribe("user-1")
+	ch2 := b.Subscribe("user-1") // same user, 2 subscribers
+	n := domain.Notification{UserID: "user-1", Title: "Test", Message: "msg", Time: time.Now()}
+	delivered := b.Broadcast(n)
+	if delivered != 2 {
+		t.Errorf("Expected 2 delivered, got %d", delivered)
+	}
+	// drain
+	<-ch1
+	<-ch2
+}

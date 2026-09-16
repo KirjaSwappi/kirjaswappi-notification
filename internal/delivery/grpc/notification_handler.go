@@ -42,13 +42,20 @@ func (h *NotificationHandler) SendNotification(ctx context.Context, req *pb.Noti
 		Time:    req.GetTime().AsTime(),
 	}
 
-	h.broadcaster.Broadcast(notification)
+	delivered := h.broadcaster.Broadcast(notification)
+	if delivered == 0 {
+		h.logger.Warn("notification delivered to zero subscribers",
+			slog.String("user_id", req.UserId),
+			slog.String("title", req.Title))
+		return &pb.NotificationResponse{Success: false}, nil
+	}
 
 	h.logger.Info("Notification sent",
 		slog.String("user_id", req.UserId),
-		slog.String("title", req.Title))
+		slog.String("title", req.Title),
+		slog.Int("delivered", delivered))
 
-	return &pb.NotificationResponse{Success: true}, nil
+	return &pb.NotificationResponse{Success: delivered > 0}, nil
 }
 
 func (h *NotificationHandler) validateRequest(req *pb.NotificationRequest) error {

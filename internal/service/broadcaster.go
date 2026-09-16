@@ -70,12 +70,12 @@ func (b *Broadcaster) Unsubscribe(userID string, ch Subscriber) {
 	}
 }
 
-func (b *Broadcaster) Broadcast(n domain.Notification) {
+func (b *Broadcaster) Broadcast(n domain.Notification) int {
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
 	if b.closed {
-		return
+		return 0
 	}
 
 	subscribers := b.subscribers[n.UserID]
@@ -83,7 +83,7 @@ func (b *Broadcaster) Broadcast(n domain.Notification) {
 		b.logger.Debug("No subscribers for notification",
 			slog.String("user_id", n.UserID),
 			slog.String("title", n.Title))
-		return
+		return 0
 	}
 
 	delivered := 0
@@ -114,6 +114,8 @@ func (b *Broadcaster) Broadcast(n domain.Notification) {
 				slog.Int("dropped", dropped))
 		}
 	}
+
+	return delivered
 }
 
 func (b *Broadcaster) Close() {
